@@ -630,65 +630,89 @@ atoi_hex_digit_a_f:
     add  bl, 10
 
 atoi_hex_got_digit:
+    ; BX = digit (0-15)
+    xor  bh, bh
     ; Multiply current result by 16 (shift left by 4 bits)
-    mov  dx, ax
-    shl  dx, 4
+    ;mov  dx, ax
+    ;shl  dx, 4
 
     ; Check overflow before adding new digit
-    cmp  di, 0
-    je   atoi_hex_check_pos_mul
+    ;cmp  di, 0
+    ;je   atoi_hex_check_pos_mul
 
     ; Negative number: result must not exceed 8000h in absolute value
-    cmp  dx, 8000h
+    ;cmp  dx, 8000h
+    ;ja   atoi_hex_overflow
+    ;jmp  atoi_hex_add_digit
+    ; ---- OVERFLOW CHECK BEFORE *16 ----
+    ; For positive: current absolute value must be <= 2047
+    ; For negative: current absolute value must be <= 2048
+    test di, di
+    jnz  atoi_hex_neg_check_limit
+
+    ; Positive
+    cmp  ax, 2047               ; 0x7FF = 32767/16
     ja   atoi_hex_overflow
-    jmp  atoi_hex_add_digit
 
-atoi_hex_check_pos_mul:
-    cmp  dx, 7FFFh
-    ja   atoi_hex_overflow
+    jne  atoi_hex_pos_safe_mul
 
-atoi_hex_add_digit:
-    xor  bh, bh
-    add  dx, bx
-
+    ; ax == 2047 → after shift becomes 32752, digit can be 0..15
+    ; (max 32752+15 = 32767) → no further digit limit
+    jmp  atoi_hex_pos_safe_mul
+atoi_hex_check_pos_safe_mul:
+     ; AX = AX * 16 (shift left 4)
+    shl  ax, 4
+    ; Add digit
+    add  ax, bx
     ; Check overflow after addition
-    cmp  di, 0
-    je   atoi_hex_check_pos_add
-
-    cmp  dx, 8000h
+    cmp  ax, 32767
     ja   atoi_hex_overflow
-
-    ; Special case: -32768 is allowed only if it's the complete number
-    cmp  dx, 8000h
-    jne  atoi_hex_store_negative_result
-    cmp  cx, 1
-    jne  atoi_hex_overflow
-
-atoi_hex_store_negative_result:
-    mov  ax, dx
     jmp  atoi_hex_digit_done
-
-atoi_hex_check_pos_add:
-    cmp  dx, 7FFFh
+atoi_hex_neg_check_limit:
+    ; Negative (absolute value) 
+    cmp  ax, 2048               ; 0x800 = 32768/16
     ja   atoi_hex_overflow
-    mov  ax, dx
+    jne  atoi_hex_neg_safe_mul
+    ; ax == 2048 → after shift becomes 32768, digit must be 0
+    test bx, bx
+    jnz  atoi_hex_overflow
+
+atoi_hex_neg_safe_mul:
+    shl  ax, 4
+    add  ax, bx
+    ; Check overflow after addition (should be <= 32768)
+    cmp  ax, 32768
+    ja   atoi_hex_overflow
 
 atoi_hex_digit_done:
     inc  si
     dec  cx
     jnz  atoi_hex_convert_loop
-
-    ; Normal completion: all characters processed successfully
+    ; Normal termination: processed all characters successfully
 atoi_hex_end_convert:
     test di, di
     jz   atoi_hex_done
-
-    ; Apply minus sign (except for -32768 case, which is already correct)
-    cmp  ax, 8000h
-    je   atoi_hex_done
+    ; Apply negative sign, except for -32768 which is already stored as 32768
+    cmp  ax, 32768
+    je   atoi_hex_done_neg
     neg  ax
 
+atoi_hex_done_neg:
+    ; For -32768, AX is already 32768 -> we need to set it to -32768
+    ; But since we didn't negate, we must set AX to -32768 here.
+    ; However, after conversion, if di=1 and ax==32768, we want -32768.
+    ; The code above jumps to atoi_hex_done_neg but we need to adjust.
+    ; Let's handle it:
+
 atoi_hex_done:
+    ; If negative and value is 32768, make it -32768
+    test di, di
+    jz   atoi_hex_done_positive
+    cmp  ax, 32768
+    jne  atoi_hex_done_positive
+    mov  ax, -32768
+
+atoi_hex_done_positive:
     pop  dx
     pop  bx
     pop  di

@@ -536,7 +536,6 @@ atoi_dec_invalid_number:
 ;   AX = converted number (on success)
 ;   CF = 0 on success, 1 on overflow
 ;   On overflow AX = ERROR_OVERFLOW
-
 atoi_hex:
     push bp
     mov  bp, sp
@@ -546,12 +545,12 @@ atoi_hex:
     push dx
 
     mov  si, word ptr [bp+4]   ; pointer to string
-    mov  cx, word ptr [bp+6]   ; string length
+    mov  cx, word ptr [bp+6]   ; length of string
 
     xor  ax, ax                ; result = 0
     xor  di, di                ; sign = 0 (0 = positive, 1 = negative)
 
-    ; Empty string is invalid
+    ; Empty string -> invalid
     test cx, cx
     jz   atoi_hex_invalid_number
 
@@ -564,12 +563,12 @@ atoi_hex:
     inc  si
     dec  cx
 
-    test cx, cx                ; after sign must be at least one character
+    test cx, cx                ; after sign there must be at least one character
     jz   atoi_hex_invalid_number
 
 atoi_hex_no_sign:
 
-    ; Skip optional prefix '0x' or '0X'
+    ; Skip optional '0x' or '0X' prefix
     cmp  cx, 2
     jb   atoi_hex_no_prefix
 
@@ -587,7 +586,7 @@ atoi_hex_prefix_skip:
     add  si, 2
     sub  cx, 2
 
-    test cx, cx                ; after '0x' must be at least one hex digit
+    test cx, cx                ; after '0x' there must be at least one hex digit
     jz   atoi_hex_invalid_number
 
 atoi_hex_no_prefix:
@@ -595,19 +594,19 @@ atoi_hex_no_prefix:
 atoi_hex_convert_loop:
     mov  bl, byte ptr [si]
 
-    ; Check '0'..'9'
+    ; Check for '0'..'9'
     cmp  bl, '0'
     jb   atoi_hex_invalid_number
     cmp  bl, '9'
     jbe  atoi_hex_digit_0_9
 
-    ; Check 'A'..'F'
+    ; Check for 'A'..'F'
     cmp  bl, 'A'
     jb   atoi_hex_invalid_number
     cmp  bl, 'F'
     jbe  atoi_hex_digit_bA_F
 
-    ; Check 'a'..'f'
+    ; Check for 'a'..'f'
     cmp  bl, 'a'
     jb   atoi_hex_invalid_number
     cmp  bl, 'f'
@@ -632,25 +631,14 @@ atoi_hex_digit_a_f:
 atoi_hex_got_digit:
     ; BX = digit (0-15)
     xor  bh, bh
-    ; Multiply current result by 16 (shift left by 4 bits)
-    ;mov  dx, ax
-    ;shl  dx, 4
 
-    ; Check overflow before adding new digit
-    ;cmp  di, 0
-    ;je   atoi_hex_check_pos_mul
-
-    ; Negative number: result must not exceed 8000h in absolute value
-    ;cmp  dx, 8000h
-    ;ja   atoi_hex_overflow
-    ;jmp  atoi_hex_add_digit
     ; ---- OVERFLOW CHECK BEFORE *16 ----
     ; For positive: current absolute value must be <= 2047
     ; For negative: current absolute value must be <= 2048
     test di, di
     jnz  atoi_hex_neg_check_limit
 
-    ; Positive
+    ; ----------- Positive -----------
     cmp  ax, 2047               ; 0x7FF = 32767/16
     ja   atoi_hex_overflow
 
@@ -659,8 +647,9 @@ atoi_hex_got_digit:
     ; ax == 2047 → after shift becomes 32752, digit can be 0..15
     ; (max 32752+15 = 32767) → no further digit limit
     jmp  atoi_hex_pos_safe_mul
-atoi_hex_check_pos_safe_mul:
-     ; AX = AX * 16 (shift left 4)
+
+atoi_hex_pos_safe_mul:
+    ; AX = AX * 16 (shift left 4)
     shl  ax, 4
     ; Add digit
     add  ax, bx
@@ -668,15 +657,18 @@ atoi_hex_check_pos_safe_mul:
     cmp  ax, 32767
     ja   atoi_hex_overflow
     jmp  atoi_hex_digit_done
+
 atoi_hex_neg_check_limit:
-    ; Negative (absolute value) 
+    ; ----------- Negative (absolute value) -----------
     cmp  ax, 2048               ; 0x800 = 32768/16
     ja   atoi_hex_overflow
+
     jne  atoi_hex_neg_safe_mul
+
     ; ax == 2048 → after shift becomes 32768, digit must be 0
     test bx, bx
     jnz  atoi_hex_overflow
-
+;--
 atoi_hex_neg_safe_mul:
     shl  ax, 4
     add  ax, bx
@@ -688,10 +680,12 @@ atoi_hex_digit_done:
     inc  si
     dec  cx
     jnz  atoi_hex_convert_loop
+
     ; Normal termination: processed all characters successfully
 atoi_hex_end_convert:
     test di, di
     jz   atoi_hex_done
+
     ; Apply negative sign, except for -32768 which is already stored as 32768
     cmp  ax, 32768
     je   atoi_hex_done_neg
@@ -711,7 +705,7 @@ atoi_hex_done:
     cmp  ax, 32768
     jne  atoi_hex_done_positive
     mov  ax, -32768
-
+;--
 atoi_hex_done_positive:
     pop  dx
     pop  bx
@@ -722,7 +716,7 @@ atoi_hex_done_positive:
     clc
     ret
 
-; Return error: invalid hex character or no digits
+; Return error: invalid hex digit or missing digits
 atoi_hex_invalid_number:
     pop  dx
     pop  bx
@@ -745,7 +739,6 @@ atoi_hex_overflow:
     mov  ax, ERROR_OVERFLOW
     stc
     ret
-
 
 ; error_handler - Output error message by error code
 ; Input:
